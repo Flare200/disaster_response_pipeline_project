@@ -8,8 +8,12 @@ from nltk.tokenize import word_tokenize
 from flask import Flask
 from flask import render_template, request, jsonify
 from plotly.graph_objs import Bar
-from sklearn.externals import joblib
+import joblib
 from sqlalchemy import create_engine
+
+import sys
+sys.path.append('..')
+from models.train_classifier import TextLengthExtractor
 
 
 app = Flask(__name__)
@@ -26,11 +30,11 @@ def tokenize(text):
     return clean_tokens
 
 # load data
-engine = create_engine('sqlite:///../data/YourDatabaseName.db')
-df = pd.read_sql_table('YourTableName', engine)
+engine = create_engine('sqlite:///../data/Disaster.db')
+df = pd.read_sql_table('messages', engine)
 
 # load model
-model = joblib.load("../models/your_model_name.pkl")
+model = joblib.load("../models/classifier.pkl")
 
 
 # index webpage displays cool visuals and receives user input text for model
@@ -42,6 +46,21 @@ def index():
     # TODO: Below is an example - modify to extract data for your own visuals
     genre_counts = df.groupby('genre').count()['message']
     genre_names = list(genre_counts.index)
+
+    # Extract data for the second visual
+    # Get the names of the categories
+    category_names = df.columns[4:]
+    # Get the number of messages per category
+    category_counts = df[category_names].sum(axis=0)
+    # Get the number of messages per category and prediction
+    category_pred_counts = pd.DataFrame(columns=['category', 'prediction', 'count'])
+    
+    for i, category in enumerate(category_names):
+        category_pred_counts.loc[i] = [category, 'True', category_counts[i]]
+        category_pred_counts.loc[i + len(category_names)] = [category, 'False', len(df) - category_counts[i]]
+
+    # Extract data for the third visual
+
     
     # create visuals
     # TODO: Below is an example - modify to create your own visuals
@@ -63,7 +82,31 @@ def index():
                     'title': "Genre"
                 }
             }
-        }
+        },
+        {
+        'data': [
+            Bar(
+                x=category_pred_counts[category_pred_counts['prediction'] == 'True']['category'],
+                y=category_pred_counts[category_pred_counts['prediction'] == 'True']['count'],
+                name='True'
+            ),
+            Bar(
+                x=category_pred_counts[category_pred_counts['prediction'] == 'False']['category'],
+                y=category_pred_counts[category_pred_counts['prediction'] == 'False']['count'],
+                name='False'
+            )
+        ],
+        'layout': {
+            'title': 'Distribution of Message Categories',
+            'yaxis': {
+                'title': "Count"
+            },
+            'xaxis': {
+                'title': "Category"
+            },
+            'barmode': 'stack'
+            }
+        },
     ]
     
     # encode plotly graphs in JSON

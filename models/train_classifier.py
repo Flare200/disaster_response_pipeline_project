@@ -1,24 +1,106 @@
 import sys
+import nltk
+nltk.download(['punkt', 'wordnet', 'averaged_perceptron_tagger', 'stopwords'])
+
+import re
+import numpy as np
+import pandas as pd
+
+from nltk.tokenize import word_tokenize
+from nltk.stem import WordNetLemmatizer
+from nltk.corpus import stopwords
+from nltk import pos_tag, ne_chunk
+
+from sklearn.metrics import classification_report
+from sklearn.model_selection import GridSearchCV
+from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.multioutput import MultiOutputClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.pipeline import Pipeline, FeatureUnion
+from sklearn.base import BaseEstimator, TransformerMixin
+from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
+
+from sqlalchemy import create_engine
+
+import warnings 
+warnings.filterwarnings('ignore')
+
+import pickle
+
+# A custom transformer that extracts the length of the text data
+class TextLengthExtractor(BaseEstimator, TransformerMixin):
+    def fit(self, x, y=None):
+        return self
+
+    def transform(self, X):
+        X_series = pd.Series(X)  # Convert input to Series
+        return pd.DataFrame(X_series.apply(lambda x: len(x)))  # Apply length function
 
 
 def load_data(database_filepath):
-    pass
+    engine = create_engine('sqlite:///' + database_filepath)
+    df = pd.read_sql_table('messages', engine)
+    X = df['message']
+    Y = df.iloc[:, 4:]
+    category_names = Y.columns.tolist()
+
+    # Find unique values for columns
+    one_class = []
+    for col in Y.columns:
+        # print(col, np.unique(Y[col]))
+        if len(np.unique(Y[col])) < 2:
+            print('Dropping' ,col, np.unique(Y[col]))
+            one_class.append(col)
+
+    # Drop columns with only one class
+    Y.drop(one_class, axis=1, inplace=True) #This is done so that the model does not break
+    # You can comment out lines 47-55 to see what happens when you don't drop the columns with only one class (there should only be one being "child_alone")
+
+    return X, Y, category_names
 
 
 def tokenize(text):
-    pass
+    # Normalize text
+    text = re.sub(r"[^a-zA-Z0-9]", " ", text.lower())
+
+    # Tokenize text
+    tokens = word_tokenize(text)
+
+    # Lemmatize and remove stop words
+    lemmatizer = WordNetLemmatizer()
+    stop_words = stopwords.words("english")
+    clean_tokens = [lemmatizer.lemmatize(word) for word in tokens if word not in stop_words]
+    return clean_tokens
 
 
 def build_model():
-    pass
+    pipeline = Pipeline([
+        ('features', FeatureUnion([
+
+            ('text_pipeline', Pipeline([
+                ('vect', CountVectorizer(tokenizer=tokenize)),
+                ('tfidf', TfidfTransformer())
+            ])),
+
+            ('text_length', TextLengthExtractor()) # Adding the length of the text as a feature
+        ])),
+
+        ('clf', MultiOutputClassifier(LogisticRegression())) # Using Logistic Regression as the classifier
+    ])
+
+    return pipeline
 
 
 def evaluate_model(model, X_test, Y_test, category_names):
-    pass
+    Y_pred = model.predict(X_test)
+    
+    for i, col in enumerate(Y_test.columns):
+        print(col)
+        print(classification_report(Y_test[col], Y_pred[:, i]))
 
 
 def save_model(model, model_filepath):
-    pass
+    pickle.dump(model, open(model_filepath, 'wb'))
 
 
 def main():
