@@ -60,6 +60,13 @@ def index():
         category_pred_counts.loc[i + len(category_names)] = [category, 'False', len(df) - category_counts[i]]
 
     # Extract data for the third visual
+    # Get the accuracy per category
+    category_accuracy = df.iloc[:, 4:].mean(axis=0).sort_values(ascending=False)
+    # Get the accuracy per category and prediction
+    category_accuracy_pred = pd.DataFrame(columns=['category', 'prediction', 'accuracy'])
+
+    for i, category in enumerate(category_accuracy.index):
+        category_accuracy_pred.loc[i] = [category, 'True', category_accuracy[i]]
 
     
     # create visuals
@@ -105,6 +112,23 @@ def index():
                 'title': "Category"
             },
             'barmode': 'stack'
+            }
+        },
+        {
+        'data': [
+            Bar(
+                x=category_accuracy_pred[category_accuracy_pred['prediction'] == 'True']['category'],
+                y=category_accuracy_pred[category_accuracy_pred['prediction'] == 'True']['accuracy'],
+            ),
+        ],
+        'layout': {
+            'title': 'Accuracy per Category',
+            'yaxis': {
+                'title': "Accuracy"
+            },
+            'xaxis': {
+                'title': "Category"
+            },
             }
         },
     ]

@@ -3,17 +3,15 @@ import nltk
 nltk.download(['punkt', 'wordnet', 'averaged_perceptron_tagger', 'stopwords'])
 
 import re
-import numpy as np
 import pandas as pd
 
 from nltk.tokenize import word_tokenize
 from nltk.stem import WordNetLemmatizer
 from nltk.corpus import stopwords
-from nltk import pos_tag, ne_chunk
 
 from sklearn.metrics import classification_report
 from sklearn.model_selection import GridSearchCV
-from sklearn.linear_model import LogisticRegression, SGDClassifier
+from sklearn.ensemble import RandomForestClassifier
 from sklearn.multioutput import MultiOutputClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.pipeline import Pipeline, FeatureUnion
@@ -44,18 +42,6 @@ def load_data(database_filepath):
     Y = df.iloc[:, 4:]
     category_names = Y.columns.tolist()
 
-    # Find unique values for columns
-    one_class = []
-    for col in Y.columns:
-        # print(col, np.unique(Y[col]))
-        if len(np.unique(Y[col])) < 2:
-            print('Dropping' ,col, np.unique(Y[col]))
-            one_class.append(col)
-
-    # Drop columns with only one class
-    Y.drop(one_class, axis=1, inplace=True) #This is done so that the model does not break
-    # You can comment out lines 47-55 to see what happens when you don't drop the columns with only one class (there should only be one being "child_alone")
-
     return X, Y, category_names
 
 
@@ -85,16 +71,21 @@ def build_model():
             ('text_length', TextLengthExtractor()) # Adding the length of the text as a feature
         ])),
 
-        ('clf', MultiOutputClassifier(LogisticRegression())) # Using Logistic Regression as the classifier
+        ('clf', MultiOutputClassifier(RandomForestClassifier())) # Using a random forest classifier
     ])
 
-    return pipeline
+    parameters = {
+        'clf__estimator__n_estimators': [10, 50], # number of trees in the forest
+    }
+    cv = GridSearchCV(pipeline, param_grid=parameters, cv=2) # reduced cv to 2 to speed up training
+
+    return cv
 
 
 def evaluate_model(model, X_test, Y_test, category_names):
     Y_pred = model.predict(X_test)
     
-    for i, col in enumerate(Y_test.columns):
+    for i, col in enumerate(category_names):
         print(col)
         print(classification_report(Y_test[col], Y_pred[:, i]))
 
@@ -114,7 +105,7 @@ def main():
         model = build_model()
         
         print('Training model...')
-        model.fit(X_train, Y_train)
+        model.fit(X_train, Y_train) # Takes ~30 minutes to run the grid search for the random forest classifier with the above params
         
         print('Evaluating model...')
         evaluate_model(model, X_test, Y_test, category_names)
